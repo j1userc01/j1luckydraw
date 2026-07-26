@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ระบบจับรางวัลลัคกี้ดรอว์</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Prompt:wght@500;600;700;800&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/canvas-confetti/1.9.2/confetti.browser.min.js"></script>
+<style>
+  :root{
+    --navy-950:#080d1f; --navy-900:#0a1128; --navy-800:#12224d; --navy-700:#1b2f63;
+    --gold-300:#f6dc9a; --gold-400:#f0c866; --gold-500:#d4af37; --gold-700:#9c7a1e;
+    --maroon-600:#7a1f2b; --maroon-500:#932433; --cream:#f7f1e0;
+    /* dynamic slot sizing — overridden by JS per draw count / mode */
+    --card-max:230px; --photo-size:92px; --name-size:0.98rem; --unit-reveal-size:1.6rem;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    font-family:'Sarabun',sans-serif;
+    background:
+      radial-gradient(ellipse at top, rgba(240,200,102,0.08), transparent 60%),
+      linear-gradient(180deg, var(--navy-950), var(--navy-900) 40%, #060a18 100%);
+    color:var(--cream);
+    min-height:100vh;
+    margin:0;
+  }
+  .font-display{ font-family:'Prompt',sans-serif; }
+  .text-gold{ color:var(--gold-400); }
+  .bg-navy-panel{ background:linear-gradient(180deg, rgba(27,47,99,0.55), rgba(10,17,40,0.75)); }
+  .gold-border{ border:1px solid rgba(240,200,102,0.35); }
+  .gold-gradient-text{
+    background:linear-gradient(180deg, #fff6da, var(--gold-400) 55%, var(--gold-700));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .btn{
+    font-family:'Prompt',sans-serif; font-weight:600; border-radius:0.9rem;
+    padding:0.75rem 1.4rem; transition:transform .15s ease, box-shadow .15s ease, filter .15s ease;
+    letter-spacing:.02em;
+  }
+  .btn:active{ transform:scale(0.96); }
+  .btn-gold{ background:linear-gradient(180deg,#fbe6a8,var(--gold-500) 60%,var(--gold-700)); color:#1a1204; box-shadow:0 6px 18px rgba(212,175,55,0.35); }
+  .btn-gold:hover{ filter:brightness(1.07); }
+  .btn-gold:disabled{ filter:grayscale(0.6) brightness(0.7); cursor:not-allowed; }
+  .btn-outline{ background:rgba(255,255,255,0.04); border:1px solid rgba(240,200,102,0.4); color:var(--gold-300); }
+  .btn-outline:hover{ background:rgba(240,200,102,0.1); }
+  .btn-maroon{ background:linear-gradient(180deg,#a8323f,var(--maroon-600) 70%,#4d1219); color:#fff2ea; box-shadow:0 6px 18px rgba(122,31,43,0.4); }
+  .btn-maroon:hover{ filter:brightness(1.08); }
+  input[type=text], input[type=number]{
+    background:rgba(6,10,24,0.6); border:1px solid rgba(240,200,102,0.3); color:var(--cream);
+    border-radius:0.6rem; padding:0.5rem 0.75rem; font-family:'Sarabun',sans-serif;
+  }
+  input[type=text]:focus, input[type=number]:focus{ outline:2px solid var(--gold-500); outline-offset:1px; }
+  label.field-label{ font-family:'Prompt',sans-serif; font-size:0.78rem; color:var(--gold-300); letter-spacing:.03em; }
+
+  /* ===== Marquee chase-light frame (signature element) ===== */
+  .marquee-frame{ position:relative; padding:22px; border-radius:1.5rem; }
+  .marquee-frame::before{
+    content:''; position:absolute; inset:0; border-radius:1.5rem;
+    background:linear-gradient(180deg, rgba(240,200,102,0.12), rgba(122,31,43,0.10));
+    border:2px solid rgba(240,200,102,0.25); pointer-events:none;
+  }
+  .bulb-row{ position:absolute; inset:6px; border-radius:1.3rem; pointer-events:none; }
+  .bulb{
+    position:absolute; width:9px; height:9px; border-radius:50%;
+    background:var(--gold-300); box-shadow:0 0 6px 2px rgba(240,200,102,0.6);
+    animation:bulb-twinkle 1.6s infinite;
+  }
+  @keyframes bulb-twinkle{ 0%,60%,100%{ opacity:.18; transform:scale(.75);} 30%{ opacity:1; transform:scale(1);} }
+
+  /* ===== Slot cards ===== */
+  #slotStage{ display:grid; gap:1rem; justify-content:center; grid-template-columns:repeat(var(--stage-cols, 4),minmax(190px,1fr)); }
+  .slot-card{
+    position:relative; width:100%; max-width:var(--card-max); min-height:calc(var(--card-max) * 1.15);
+    margin:0 auto; border-radius:1.1rem; overflow:hidden;
+    background:linear-gradient(180deg,#16234c,#0a1128 70%);
+    border:2px solid rgba(240,200,102,0.4);
+    box-shadow:0 10px 30px rgba(0,0,0,0.45), inset 0 0 30px rgba(240,200,102,0.06);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:1rem 0.9rem; text-align:center;
+    transition:max-width .25s ease, min-height .25s ease;
+  }
+  .slot-card.spinning{ animation:card-shake .12s infinite; }
+  @keyframes card-shake{ 0%{transform:translateY(0);} 50%{transform:translateY(-2px);} 100%{transform:translateY(0);} }
+  .slot-flicker{ font-family:'Prompt',sans-serif; font-weight:700; font-size:calc(var(--name-size)); color:var(--gold-300); filter:blur(0.3px); }
+  .slot-unit-reveal{ font-family:'Prompt',sans-serif; font-weight:800; font-size:var(--unit-reveal-size); color:var(--gold-400); text-shadow:0 0 18px rgba(240,200,102,0.5); animation:pop-in .35s ease; }
+  .slot-photo{ width:var(--photo-size); height:var(--photo-size); border-radius:50%; object-fit:cover; object-position:center 15%; border:3px solid var(--gold-400); box-shadow:0 0 22px rgba(240,200,102,0.55); margin-bottom:0.6rem; flex-shrink:0; transition:width .25s ease, height .25s ease; }
+  .slot-photo-fallback{ width:var(--photo-size); height:var(--photo-size); border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(240,200,102,0.12); border:3px solid var(--gold-400); font-size:calc(var(--photo-size) / 2.4); margin-bottom:0.6rem; flex-shrink:0; }
+  .slot-name{ font-family:'Prompt',sans-serif; font-weight:700; font-size:var(--name-size); color:#fff6da; line-height:1.3; white-space:nowrap; max-width:100%; }
+  .slot-unit-small{ font-family:'Sarabun',sans-serif; font-size:calc(var(--name-size) * 0.8); color:var(--gold-300); margin-top:0.2rem; }
+  @keyframes pop-in{ 0%{ transform:scale(0.6); opacity:0;} 70%{ transform:scale(1.08);} 100%{ transform:scale(1); opacity:1;} }
+  .sparkle-burst{ position:absolute; inset:0; pointer-events:none; }
+  .ribbon-tag{
+    position:absolute; top:8px; left:8px; background:var(--maroon-600); color:#fff2ea;
+    font-family:'Prompt',sans-serif; font-size:0.65rem; font-weight:600; padding:2px 8px; border-radius:999px;
+  }
+  .stage-hint{
+    font-size:1.4rem; color:var(--gold-400);
+    text-shadow:0 0 16px rgba(240,200,102,0.55), 0 0 4px rgba(240,200,102,0.4);
+    line-height:1.4;
+  }
+  [data-mode="display"] .stage-hint{ font-size:2.3rem; }
+
+  /* mode helpers */
+  [data-mode="display"] .control-only{ display:none !important; }
+  [data-mode="display"] .display-hero{ font-size:2.6rem; }
+
+  /* ===== Backup control dock (hover-to-reveal in Display mode only) ===== */
+  #controlDockHandle{ display:none; }
+  [data-mode="display"] #controlDock{
+    position:fixed; top:0; left:50%; transform:translateX(-50%);
+    z-index:45; width:min(94vw,900px); margin:0;
+  }
+  [data-mode="display"] #controlDockHandle{
+    display:block; text-align:center; font-family:'Prompt',sans-serif; font-size:0.68rem;
+    color:var(--gold-300); background:rgba(8,13,31,0.85); border:1px solid rgba(240,200,102,0.35);
+    border-top:none; border-radius:0 0 0.9rem 0.9rem; padding:5px 16px;
+    width:fit-content; margin:0 auto; opacity:0.45; transition:opacity .2s ease;
+  }
+  [data-mode="display"] #controlPanel{
+    position:absolute; top:100%; left:50%; width:100%;
+    transform:translate(-50%,-14px); opacity:0; pointer-events:none;
+    transition:transform .2s ease, opacity .2s ease; margin-top:0 !important;
+  }
+  [data-mode="display"] #controlDock:hover #controlDockHandle{ opacity:1; }
+  [data-mode="display"] #controlDock:hover #controlPanel{
+    opacity:1; pointer-events:auto; transform:translate(-50%,0);
+  }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:rgba(240,200,102,0.35); border-radius:99px; }
+
+  .modal-backdrop{ background:rgba(4,6,16,0.75); backdrop-filter:blur(2px); }
+  .toast{ font-family:'Prompt',sans-serif; }
+</style>
+</head>
+<body>
+
+<!-- ============ MODE GATE ============ -->
+<div id="modeGate" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
+  <div class="bg-navy-panel gold-border rounded-2xl p-8 max-w-md w-[92%] text-center">
+    <div class="font-display text-2xl font-bold gold-gradient-text mb-1">เลือกโหมดการใช้งาน</div>
+    <p class="text-sm text-gold-300 mb-6" style="color:#e6d4a3">อุปกรณ์เครื่องนี้จะทำหน้าที่เป็น...</p>
+    <div class="grid grid-cols-1 gap-3">
+      <button onclick="chooseMode('display')" class="btn btn-gold text-left px-5 py-4">
+        🖥️ <span class="font-display">จอแสดงผลหลัก</span><br>
+        <span class="text-xs font-normal">สำหรับคอมพิวเตอร์ที่ต่อจอ Projector / TV</span>
+      </button>
+      <button onclick="chooseMode('control')" class="btn btn-outline text-left px-5 py-4">
+        📱 <span class="font-display">แผงควบคุม</span><br>
+        <span class="text-xs font-normal">สำหรับ iPad / มือถือของผู้ดำเนินรายการ (ต้องใส่รหัสผ่าน)</span>
+      </button>
+    </div>
+    <p class="text-[11px] mt-5 opacity-60">เปิด URL เดียวกันได้ทั้งสองอุปกรณ์ ระบบจะซิงค์แบบเรียลไทม์ให้อัตโนมัติ</p>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" data-mode="control" class="hidden max-w-[96rem] mx-auto px-3 sm:px-6 py-5">
+
+  <!-- Header -->
+  <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div>
+      <h1 class="font-display text-2xl sm:text-3xl font-extrabold gold-gradient-text display-hero">🎰 ระบบจับรางวัลลัคกี้ดรอว์</h1>
+      <div class="flex items-center gap-2 flex-wrap">
+        <p class="text-xs sm:text-sm opacity-70" id="statsLine">สุ่มไปแล้ว 0 / 0 คน</p>
+        <button onclick="toggleUnitSummary()" class="control-only text-xs px-2 py-0.5 rounded-full gold-border" style="background:rgba(255,255,255,0.04); color:#e6d4a3">📊 สรุปตามกอง</button>
+      </div>
+      <div id="unitSummaryBox" class="control-only hidden mt-2 bg-navy-panel gold-border rounded-xl p-3 max-w-sm max-h-56 overflow-y-auto"></div>
+    </div>
+    <div class="flex items-center gap-2 control-only">
+      <span id="connBadge" class="text-xs px-3 py-1 rounded-full gold-border" style="background:rgba(255,255,255,0.04)">🟢 เชื่อมต่อ</span>
+    </div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="w-full h-2 rounded-full mb-6" style="background:rgba(255,255,255,0.08)">
+    <div id="progressBar" class="h-2 rounded-full" style="width:0%;background:linear-gradient(90deg,var(--gold-700),var(--gold-400));transition:width .4s ease"></div>
+  </div>
+
+  <!-- Control Panel: full & static in Control mode. In Display mode it becomes a
+       hidden hover-reveal "backup" dock pinned to the top edge, so the projector
+       screen stays clean but controls are still reachable if mode-switching fails. -->
+  <div id="controlDock" class="mb-6">
+    <div id="controlDockHandle">🛠️ โหมดควบคุม (สำรอง) — เลื่อนเมาส์มาวางตรงนี้</div>
+    <div id="controlPanel" class="bg-navy-panel gold-border rounded-2xl p-4 sm:p-5">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div>
+        <label class="field-label">ชื่อรางวัล (ไม่บังคับ)</label>
+        <input type="text" id="inPrize" class="w-full mt-1" placeholder="เช่น รางวัลที่ 1">
+      </div>
+      <div>
+        <label class="field-label">ผู้มอบรางวัล (ไม่บังคับ)</label>
+        <input type="text" id="inGiver" class="w-full mt-1" placeholder="เช่น ผบ.หน่วย">
+      </div>
+      <div>
+        <label class="field-label">จำนวนผู้ได้รับรางวัล/รอบ</label>
+        <input type="number" id="inCount" class="w-full mt-1" value="1" min="1" max="30">
+      </div>
+      <div>
+        <label class="field-label">ความเร็วในการปั่น (วินาที)</label>
+        <input type="number" id="inSpeed" class="w-full mt-1" value="3" min="1" max="15" step="0.5">
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button id="btnSpin" onclick="spin()" class="btn btn-gold text-base px-6">🎯 กดสุ่มรางวัล</button>
+      <button onclick="openManage()" class="btn btn-outline">👥 จัดการรายชื่อ</button>
+      <button onclick="exportCsv()" class="btn btn-outline">⬇️ Export ผู้ได้รับรางวัล</button>
+      <button onclick="confirmReset()" class="btn btn-maroon">♻️ Reset / ล้างข้อมูล</button>
+      <button onclick="switchMode()" class="btn btn-outline ml-auto">⚙️ เปลี่ยนโหมดอุปกรณ์</button>
+      <button onclick="logoutControl()" class="btn btn-outline text-xs" title="ล้างการล็อกอิน ครั้งหน้าต้องใส่รหัสผ่านใหม่">🔒 ออกจากระบบ</button>
+    </div>
+    </div>
+  </div>
+
+  <!-- Stage -->
+  <div class="marquee-frame mb-8">
+    <div class="bulb-row" id="bulbRow"></div>
+    <div id="slotStage" class="relative z-10 py-6"></div>
+    <p id="stageHint" class="relative z-10 text-center font-display font-bold mt-3 stage-hint">กด "กดสุ่มรางวัล" เพื่อเริ่มการจับรางวัล</p>
+  </div>
+
+  <!-- Winner history panel -->
+  <div class="bg-navy-panel gold-border rounded-2xl p-4 sm:p-5">
+    <h2 class="font-display font-bold text-gold text-lg mb-3">🏆 ผู้ได้รับรางวัลทั้งหมด</h2>
+    <div id="winnerHistory" class="space-y-4">
+      <p class="text-sm opacity-50">ยังไม่มีผู้ได้รับรางวัล</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MANAGE MODAL ============ -->
+<div id="manageModal" class="fixed inset-0 z-40 hidden items-center justify-center modal-backdrop">
+  <div class="bg-navy-panel gold-border rounded-2xl p-5 w-[94%] max-w-2xl max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="font-display font-bold text-gold text-lg">👥 จัดการรายชื่อผู้ร่วมสนุก</h3>
+      <button onclick="closeManage()" class="text-2xl leading-none opacity-70 hover:opacity-100">&times;</button>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-2">
+      <input type="text" id="addId" placeholder="ID 10 หลัก" class="sm:col-span-1">
+      <input type="text" id="addName" placeholder="ยศ-ชื่อ-สกุล" class="sm:col-span-2">
+      <input type="text" id="addUnit" placeholder="กอง">
+    </div>
+    <div class="flex items-center gap-3 mb-3">
+      <label class="btn btn-outline text-xs cursor-pointer">
+        📷 แนบรูปภาพ (ไม่บังคับ)
+        <input type="file" id="addPhoto" accept="image/*" class="hidden" onchange="onAddPhotoSelected(event)">
+      </label>
+      <img id="addPhotoPreview" class="hidden w-10 h-10 rounded-full object-cover gold-border">
+      <span id="addPhotoName" class="text-xs opacity-60"></span>
+    </div>
+    <button onclick="addParticipantUi()" class="btn btn-gold w-full sm:w-auto mb-3">+ เพิ่มรายชื่อ</button>
+    <div class="flex items-center gap-2 mb-3">
+      <input type="text" id="searchBox" placeholder="🔍 ค้นหา ID / ชื่อ / กอง" class="w-full" oninput="renderManageTable()">
+      <button onclick="refreshImages()" class="btn btn-outline text-xs whitespace-nowrap" title="ใช้เมื่ออัปโหลดรูปเข้าโฟลเดอร์ Drive เองแล้วรูปไม่ขึ้น">🔄 รีเฟรชรูป</button>
+    </div>
+    <div class="overflow-y-auto flex-1 border-t border-white/10 pt-2">
+      <table class="w-full text-sm">
+        <thead class="text-gold-300 text-left" style="color:#e6d4a3">
+          <tr><th class="py-1 pr-2">ID</th><th class="py-1 pr-2">ยศ-ชื่อ-สกุล</th><th class="py-1 pr-2">กอง</th><th class="py-1 pr-2">สถานะ</th><th></th></tr>
+        </thead>
+        <tbody id="manageTbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============ RESET MODAL ============ -->
+<div id="resetModal" class="fixed inset-0 z-40 hidden items-center justify-center modal-backdrop">
+  <div class="bg-navy-panel gold-border rounded-2xl p-6 w-[92%] max-w-md text-center">
+    <div class="text-3xl mb-2">⚠️</div>
+    <h3 class="font-display font-bold text-lg mb-2" style="color:#ffb4b4">ยืนยันการล้างข้อมูลการสุ่ม</h3>
+    <p class="text-sm opacity-80 mb-4">การดำเนินการนี้จะล้างสถานะผู้ได้รับรางวัลทั้งหมด (รายชื่อผู้ร่วมสนุกจะยังคงอยู่) และไม่สามารถย้อนกลับได้<br>พิมพ์ <b>RESET</b> เพื่อยืนยัน</p>
+    <input type="text" id="resetConfirmInput" class="w-full mb-4 text-center" placeholder="RESET">
+    <div class="flex gap-2 justify-center">
+      <button onclick="closeReset()" class="btn btn-outline">ยกเลิก</button>
+      <button onclick="doReset()" class="btn btn-maroon">ยืนยันล้างข้อมูล</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONTROL MODE PASSWORD MODAL ============ -->
+<div id="passwordModal" class="fixed inset-0 z-50 hidden items-center justify-center modal-backdrop">
+  <div class="bg-navy-panel gold-border rounded-2xl p-6 w-[90%] max-w-sm text-center">
+    <div class="text-3xl mb-2">🔐</div>
+    <h3 class="font-display font-bold text-lg text-gold mb-1">เข้าสู่แผงควบคุม</h3>
+    <p class="text-xs opacity-70 mb-4">กรุณาใส่รหัสผ่านสำหรับผู้ดำเนินรายการ</p>
+    <input type="password" id="passwordInput" class="w-full text-center mb-2" placeholder="รหัสผ่าน" onkeydown="if(event.key==='Enter') submitPassword()">
+    <p id="passwordError" class="text-xs mb-1 hidden" style="color:#ff9b9b"></p>
+    <div class="flex gap-2 justify-center mt-3">
+      <button onclick="closePasswordModal()" class="btn btn-outline">ยกเลิก</button>
+      <button onclick="submitPassword()" class="btn btn-gold">เข้าสู่ระบบ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 hidden toast bg-navy-panel gold-border px-5 py-3 rounded-xl text-sm"></div>
+
+
+<!-- Mode switch handle -- always visible, top corner so it never collides with stage/confetti -->
+<button onclick="switchMode()"
+  class="fixed top-3 right-3 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs gold-border"
+  style="background:rgba(8,13,31,0.72); color:#e6d4a3; backdrop-filter:blur(2px);"
+  title="เปลี่ยนโหมดอุปกรณ์ (จอแสดงผล / แผงควบคุม)">
+  ⚙️ <span class="hidden sm:inline">เปลี่ยนโหมด</span>
+</button>
+
+<!-- Sound toggle -->
+<button id="soundToggle" onclick="toggleSound()"
+  class="fixed top-3 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs gold-border"
+  style="right:6.5rem; background:rgba(8,13,31,0.72); color:#e6d4a3; backdrop-filter:blur(2px);"
+  title="เปิด/ปิดเสียงเอฟเฟกต์">
+  🔊 <span class="hidden sm:inline">เสียง</span>
+</button>
+
+<script>
+/* ============================================================
+   STATE
+============================================================ */
+let MODE = null;
+let lastEventId = null;
+let initialized = false;
+let participantsCache = [];
+let winnersHistoryCache = [];
+let pollTimer = null;
+let spinning = false;
+let imageMapCache = {};       // id -> photo URL, used for the spin flicker effect
+let lastByUnit = [];          // unit breakdown from the latest getState()
+let unitSummaryOpen = false;
+let pendingPhoto = null;      // { base64, mime } staged from the add-participant file input
+let soundOn = true;
+
+const LS_MODE = 'ld_appMode';
+const LS_LAST_EVENT = 'ld_lastEventId';
+const LS_WINNERS = 'ld_winnersHistory';
+const LS_PARTICIPANTS = 'ld_participantsCache';
+const LS_SOUND = 'ld_soundOn';
+const LS_CONTROL_AUTH = 'ld_controlAuth';
+
+/* ============================================================
+   INIT
+============================================================ */
+window.addEventListener('DOMContentLoaded', () => {
+  buildBulbs();
+  initSound();
+  const savedMode = localStorage.getItem(LS_MODE);
+  if (savedMode === 'display') {
+    activateMode('display', true);
+  } else if (savedMode === 'control' && localStorage.getItem(LS_CONTROL_AUTH)) {
+    activateMode('control', true);
+  } else {
+    document.getElementById('modeGate').classList.remove('hidden');
+  }
+});
+
+// iOS (and other mobile browsers) can suspend timers/network activity while
+// the screen is locked or the tab is backgrounded. Rather than hope the
+// stale in-memory state (image map, participant list, current event) is
+// still accurate whenever the person looks back at the screen, force a full
+// resync the instant the page becomes visible again.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && MODE) {
+    refreshFromServer();
+  }
+});
+
+function buildBulbs(){
+  const row = document.getElementById('bulbRow');
+  const perimeter = 60; // number of bulbs approx
+  for(let i=0;i<perimeter;i++){
+    const b = document.createElement('div');
+    b.className = 'bulb';
+    const t = i / perimeter;
+    // distribute around a rounded rectangle path approx via percentage offsets
+    const angle = t * 2 * Math.PI;
+    const rx = 49, ry = 49;
+    const x = 50 + rx * Math.cos(angle);
+    const y = 50 + ry * Math.sin(angle);
+    b.style.left = x + '%';
+    b.style.top = y + '%';
+    b.style.animationDelay = (t * 1.6) + 's';
+    row.appendChild(b);
+  }
+}
+
+/** Called from the mode-gate buttons. Display mode is instant;
+ *  Control mode requires a password unless this device already authenticated. */
+function chooseMode(mode){
+  if (mode === 'display'){
+    activateMode('display');
+    return;
+  }
+  if (localStorage.getItem(LS_CONTROL_AUTH)){
+    activateMode('control');
+    return;
+  }
+  openPasswordModal();
+}
+
+function activateMode(mode, silent){
+  MODE = mode;
+  localStorage.setItem(LS_MODE, mode);
+  document.getElementById('modeGate').classList.add('hidden');
+  const app = document.getElementById('app');
+  app.classList.remove('hidden');
+  app.setAttribute('data-mode', mode);
+  loadFromLocalCache();
+  refreshFromServer();
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(poll, 1200);
+  if(!silent) toast(mode === 'display' ? '🖥️ ตั้งค่าเป็นจอแสดงผลแล้ว' : '📱 ตั้งค่าเป็นแผงควบคุมแล้ว');
+}
+
+function switchMode(){
+  if(!confirm('ต้องการเปลี่ยนโหมดอุปกรณ์นี้หรือไม่?')) return;
+  localStorage.removeItem(LS_MODE);
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  MODE = null;
+  initialized = false;
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('modeGate').classList.remove('hidden');
+}
+
+/** Clears the saved control-mode login, forcing the password prompt again
+ *  next time someone tries to enter Control mode on this device. */
+function logoutControl(){
+  if(!confirm('ออกจากระบบผู้ควบคุม? ครั้งหน้าจะต้องใส่รหัสผ่านใหม่')) return;
+  localStorage.removeItem(LS_CONTROL_AUTH);
+  switchMode();
+}
+
+/* ============================================================
+   CONTROL-MODE PASSWORD MODAL
+============================================================ */
+function openPasswordModal(){
+  const modal = document.getElementById('passwordModal');
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  document.getElementById('passwordError').classList.add('hidden');
+  document.getElementById('passwordInput').value = '';
+  setTimeout(() => document.getElementById('passwordInput').focus(), 50);
+}
+function closePasswordModal(){
+  const modal = document.getElementById('passwordModal');
+  modal.classList.add('hidden');
+  modal.classList.remove('flex');
+}
+function submitPassword(){
+  const pw = document.getElementById('passwordInput').value;
+  if (!pw){ showPasswordError('กรุณาใส่รหัสผ่าน'); return; }
+  google.script.run
+    .withSuccessHandler(res => {
+      if (!res.success){ showPasswordError(res.message || 'รหัสผ่านไม่ถูกต้อง'); return; }
+      localStorage.setItem(LS_CONTROL_AUTH, res.username || 'ผู้ควบคุม');
+      closePasswordModal();
+      activateMode('control');
+    })
+    .withFailureHandler(err => showPasswordError('เกิดข้อผิดพลาด: ' + err.message))
+    .verifyControlPassword(pw);
+}
+function showPasswordError(msg){
+  const el = document.getElementById('passwordError');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+/* ============================================================
+   LOCAL CACHE (crash recovery)
+============================================================ */
+function loadFromLocalCache(){
+  try{
+    const w = localStorage.getItem(LS_WINNERS);
+    if (w) { winnersHistoryCache = JSON.parse(w); renderWinnerHistory(); }
+    const p = localStorage.getItem(LS_PARTICIPANTS);
+    if (p) participantsCache = JSON.parse(p);
+    const le = localStorage.getItem(LS_LAST_EVENT);
+    if (le) lastEventId = le;
+  }catch(e){ console.warn('cache load failed', e); }
+}
+
+function saveWinnersCache(){
+  localStorage.setItem(LS_WINNERS, JSON.stringify(winnersHistoryCache));
+}
+function saveParticipantsCache(){
+  localStorage.setItem(LS_PARTICIPANTS, JSON.stringify(participantsCache));
+}
+
+/* ============================================================
+   SERVER SYNC
+============================================================ */
+function refreshFromServer(){
+  setConn(true);
+  google.script.run.withSuccessHandler(list => {
+    participantsCache = list;
+    saveParticipantsCache();
+    renderManageTable();
+  }).withFailureHandler(() => setConn(false)).getAllParticipants();
+
+  google.script.run.withSuccessHandler(list => {
+    winnersHistoryCache = groupByRound(list);
+    saveWinnersCache();
+    renderWinnerHistory();
+  }).withFailureHandler(() => setConn(false)).getWinnersList();
+
+  google.script.run.withSuccessHandler(map => {
+    imageMapCache = map || {};
+    preloadImages(imageMapCache);
+  }).withFailureHandler(err => {
+    console.warn('getImageUrlMap failed:', err);
+    setConn(false);
+  }).getImageUrlMap();
+
+  google.script.run.withSuccessHandler(onState).withFailureHandler(() => setConn(false)).getState();
+}
+
+function refreshImages(){
+  google.script.run.withSuccessHandler(res => {
+    toast(`🔄 รีเฟรชแล้ว (ตั้งค่าแชร์รูป ${res.fixedCount || 0} ไฟล์)`);
+    refreshFromServer();
+  }).withFailureHandler(err => toast('⚠️ ' + err.message)).refreshImageCache();
+}
+
+function poll(){
+  google.script.run.withSuccessHandler(onState).withFailureHandler(()=>setConn(false)).getState();
+}
+
+function setConn(ok){
+  const b = document.getElementById('connBadge');
+  if(!b) return;
+  b.textContent = ok ? '🟢 เชื่อมต่อ' : '🔴 ขาดการเชื่อมต่อ (ใช้ข้อมูลสำรอง)';
+}
+
+function onState(state){
+  setConn(true);
+  updateStats(state.stats);
+  if (!initialized){
+    initialized = true;
+    if (state.event) {
+      lastEventId = state.event.id;
+      localStorage.setItem(LS_LAST_EVENT, lastEventId);
+    }
+    return;
+  }
+  if (state.event && state.event.id !== lastEventId){
+    lastEventId = state.event.id;
+    localStorage.setItem(LS_LAST_EVENT, lastEventId);
+    handleEvent(state.event);
+  }
+}
+
+function updateStats(stats){
+  document.getElementById('statsLine').textContent = `สุ่มไปแล้ว ${stats.won} / ${stats.total} คน`;
+  const pct = stats.total ? Math.round((stats.won/stats.total)*100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  lastByUnit = stats.byUnit || [];
+  if (unitSummaryOpen) renderUnitSummary();
+}
+
+function toggleUnitSummary(){
+  unitSummaryOpen = !unitSummaryOpen;
+  const box = document.getElementById('unitSummaryBox');
+  if (unitSummaryOpen){
+    box.classList.remove('hidden');
+    renderUnitSummary();
+  } else {
+    box.classList.add('hidden');
+  }
+}
+
+function renderUnitSummary(){
+  const box = document.getElementById('unitSummaryBox');
+  if (!lastByUnit.length){
+    box.innerHTML = '<p class="text-xs opacity-50">ยังไม่มีข้อมูล</p>';
+    return;
+  }
+  box.innerHTML = `
+    <table class="w-full text-xs">
+      <thead class="text-gold-300" style="color:#e6d4a3"><tr><th class="text-left pb-1">กอง</th><th class="text-right pb-1">จับได้/ทั้งหมด</th></tr></thead>
+      <tbody>
+        ${lastByUnit.map(u => `
+          <tr class="border-t border-white/10">
+            <td class="py-1 pr-2">${escapeHtml(u.unit)}</td>
+            <td class="py-1 text-right">${u.won} / ${u.total}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function groupByRound(list){
+  const map = {};
+  list.forEach(w => {
+    const key = w.round || '-';
+    if(!map[key]) map[key] = { round:key, prizeName:w.prize, giver:w.giver, time:w.time, winners:[] };
+    map[key].winners.push(w);
+  });
+  return Object.values(map).sort((a,b)=> (a.round||0)-(b.round||0));
+}
+
+/* ============================================================
+   EVENT HANDLING (draw / reset) - shared by control & display
+============================================================ */
+function handleEvent(event){
+  if (event.type === 'draw'){
+    playReveal(event.payload);
+  } else if (event.type === 'reset'){
+    winnersHistoryCache = [];
+    saveWinnersCache();
+    renderWinnerHistory();
+    document.getElementById('slotStage').innerHTML = '';
+    document.getElementById('stageHint').textContent = 'กด "กดสุ่มรางวัล" เพื่อเริ่มการจับรางวัล';
+    toast('♻️ ล้างข้อมูลการสุ่มเรียบร้อยแล้ว');
+  }
+}
+
+/* ============================================================
+   SPIN (control action)
+============================================================ */
+function spin(){
+  if (spinning) return;
+  ensureAudio();
+  const count = parseInt(document.getElementById('inCount').value, 10) || 1;
+  const speedSec = parseFloat(document.getElementById('inSpeed').value) || 3;
+  const prizeName = document.getElementById('inPrize').value.trim();
+  const giver = document.getElementById('inGiver').value.trim();
+
+  spinning = true;
+  document.getElementById('btnSpin').disabled = true;
+  google.script.run
+    .withSuccessHandler(res => {
+      document.getElementById('btnSpin').disabled = false;
+      spinning = false;
+      if (!res.success){
+        toast('⚠️ ' + res.message);
+        return;
+      }
+      lastEventId = res.event.id;
+      localStorage.setItem(LS_LAST_EVENT, lastEventId);
+      playReveal(res.event.payload);
+    })
+    .withFailureHandler(err => {
+      document.getElementById('btnSpin').disabled = false;
+      spinning = false;
+      toast('⚠️ เกิดข้อผิดพลาด: ' + err.message);
+    })
+    .drawWinners({ count, speedSec, prizeName, giver });
+}
+
+/* ============================================================
+   REVEAL ANIMATION
+============================================================ */
+function randomFlickerCard(){
+  if (!participantsCache.length) return { text: '???', photo: '' };
+  const p = participantsCache[Math.floor(Math.random() * participantsCache.length)];
+  return {
+    text: Math.random() > 0.5 ? (p.unit || '-') : p.name,
+    photo: imageMapCache[p.id] || ''
+  };
+}
+
+/** Warm the browser's image cache ahead of time so swapping <img src> during
+ *  the fast flicker loop is instant instead of waiting on a network fetch.
+ *  IMPORTANT: we keep a real reference to every Image() object in
+ *  preloadedImageRefs — iOS Safari (and some other browsers) can silently
+ *  abort/garbage-collect an unreferenced preloading Image before it
+ *  finishes loading, which is why photos would preload fine on some
+ *  devices/sessions and just never arrive on others. */
+let preloadedImageRefs = [];
+function preloadImages(map){
+  Object.keys(map || {}).forEach(id => {
+    const img = new Image();
+    img.src = map[id];
+    preloadedImageRefs.push(img);
+  });
+  if (preloadedImageRefs.length > 800) {
+    preloadedImageRefs = preloadedImageRefs.slice(-800); // cap memory use
+  }
+}
+
+/* Bigger cards/photos/text when fewer winners per round, smaller when more —
+   scaled further up in Display mode since that's the big screen everyone watches. */
+function applySlotSizing(count){
+  const stage = document.getElementById('slotStage');
+  const isDisplay = (MODE === 'display');
+  const tiers = isDisplay
+    ? [
+        { max: 1,  card: 760, photo: 345, name: 3.7,  unit: 4.8 },
+        { max: 2,  card: 630, photo: 290, name: 3.2,  unit: 4.1 },
+        { max: 4,  card: 520, photo: 225, name: 2.55, unit: 3.3 },
+        { max: 6,  card: 440, photo: 178, name: 2.15, unit: 2.75 },
+        { max: 10, card: 355, photo: 140, name: 1.65, unit: 2.3 },
+        { max: Infinity, card: 285, photo: 108, name: 1.35, unit: 1.85 }
+      ]
+    : [
+        { max: 2,  card: 370, photo: 132, name: 1.6,  unit: 2.2 },
+        { max: 4,  card: 320, photo: 112, name: 1.35, unit: 1.9 },
+        { max: 8,  card: 255, photo: 86,  name: 1.2,  unit: 1.55 },
+        { max: Infinity, card: 210, photo: 69, name: 1.0, unit: 1.3 }
+      ];
+  const t = tiers.find(t => count <= t.max);
+  stage.style.setProperty('--card-max', t.card + 'px');
+  stage.style.setProperty('--photo-size', t.photo + 'px');
+  stage.style.setProperty('--name-size', t.name + 'rem');
+  stage.style.setProperty('--unit-reveal-size', t.unit + 'rem');
+
+  // Up to 4 winners sit on a single row. Beyond that, split evenly into rows
+  // of at most 5 (so e.g. 6 → 3+3, 10 → 5+5, 12 → 4+4+4) instead of one
+  // long crowded row or an uneven auto-fit wrap.
+  let cols;
+  if (count <= 4){
+    cols = count;
+  } else {
+    const rows = Math.ceil(count / 5);
+    cols = Math.ceil(count / rows);
+  }
+  stage.style.setProperty('--stage-cols', cols);
+}
+
+let currentRevealToken = 0; // guards against overlapping playReveal() runs (e.g. a double-tap)
+
+async function playReveal(payload){
+  const myToken = ++currentRevealToken;
+  const { winners, prizeName, giver, round, speedSec } = payload;
+  const stage = document.getElementById('slotStage');
+  const hint = document.getElementById('stageHint');
+  hint.textContent = (prizeName ? '🎁 ' + prizeName : 'กำลังสุ่มรางวัล...') + (giver ? '  |  มอบโดย ' + giver : '');
+  stage.innerHTML = '';
+  applySlotSizing(winners.length);
+
+  const cards = winners.map(() => {
+    const card = document.createElement('div');
+    card.className = 'slot-card spinning';
+    card.innerHTML = `
+      <img class="slot-photo flicker-img" style="display:none">
+      <div class="slot-photo-fallback flicker-fallback">🎖️</div>
+      <div class="slot-flicker">???</div>
+    `;
+    stage.appendChild(card);
+    const img = card.querySelector('.flicker-img');
+    const fallback = card.querySelector('.flicker-fallback');
+    // If a photo URL fails to load (403/timeout — the Drive thumbnail link
+    // is occasionally flaky), fall back to the icon instead of leaving a
+    // broken-image glyph frozen on screen for the rest of the spin.
+    img.onerror = () => { img.style.display = 'none'; fallback.style.display = ''; };
+    return { card, img, fallback, text: card.querySelector('.slot-flicker') };
+  });
+
+  // Phase 1: spin flicker — cycles random photos + names/units, with ticking sound.
+  // We update the SAME img/text elements in place each tick (instead of
+  // rebuilding innerHTML) so the browser can swap already-cached images
+  // instantly rather than stalling on a fresh network fetch every tick.
+  const spinMs = Math.max(speedSec, 1) * 1000;
+  playSpinSound(spinMs / 1000);
+  const flickerIntervals = cards.map(c => setInterval(() => {
+    if (myToken !== currentRevealToken) return; // a newer reveal has started — stop touching stale nodes
+    const f = randomFlickerCard();
+    c.text.textContent = f.text;
+    if (f.photo){
+      c.img.src = f.photo;
+      c.img.style.display = '';
+      c.fallback.style.display = 'none';
+    } else {
+      c.img.style.display = 'none';
+      c.fallback.style.display = '';
+    }
+  }, 320));
+
+  await delay(spinMs);
+  flickerIntervals.forEach(clearInterval);
+  if (myToken !== currentRevealToken) return; // superseded — bail out quietly
+  cards.forEach(c => c.card.classList.remove('spinning'));
+
+  // Phase 2: reveal unit only, hold suspense (with soft drumroll)
+  winners.forEach((w, i) => {
+    cards[i].card.innerHTML = `<div class="ribbon-tag">รอบที่ ${round}</div><div class="slot-unit-reveal">${escapeHtml(w.unit || '-')}</div><div class="text-xs opacity-60 mt-2">กอง / สังกัด</div>`;
+  });
+  playDrumrollHold(4);
+
+  await delay(4000);
+  if (myToken !== currentRevealToken) return; // superseded — bail out quietly
+
+  // Phase 3: reveal photo + name + sparkle + fanfare
+  winners.forEach((w, i) => {
+    const photoHtml = w.imageUrl
+      ? `<img src="${w.imageUrl}" class="slot-photo" onerror="this.outerHTML='<div class=&quot;slot-photo-fallback&quot;>🎖️</div>'">`
+      : `<div class="slot-photo-fallback">🎖️</div>`;
+    cards[i].card.innerHTML = `
+      <div class="ribbon-tag">รอบที่ ${round}</div>
+      ${photoHtml}
+      <div class="slot-name">${escapeHtml(w.name)}</div>
+      <div class="slot-unit-small">${escapeHtml(w.unit || '-')}</div>
+    `;
+    fitNameToCard(cards[i].card);
+  });
+
+  fireConfetti();
+  playRevealFanfare();
+  hint.textContent = (prizeName ? '🎉 ยินดีด้วย! ' + prizeName : '🎉 ยินดีด้วยกับผู้โชคดี') + (giver ? '  |  มอบโดย ' + giver : '');
+
+  // update history panel
+  winnersHistoryCache.push({ round, prizeName, giver, time: new Date().toLocaleString('th-TH'), winners });
+  saveWinnersCache();
+  renderWinnerHistory();
+  refreshFromServer();
+}
+
+function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+/** Keeps the name on a single line: if it's too long to fit at the current
+ *  font size, shrink it down step by step (never wraps to a second line,
+ *  never spills outside the card). */
+function fitNameToCard(card){
+  const nameEl = card.querySelector('.slot-name');
+  if (!nameEl) return;
+  const maxWidth = card.clientWidth * 0.88;
+  let size = parseFloat(getComputedStyle(nameEl).fontSize);
+  const minSize = 12; // px floor so it never becomes unreadably tiny
+  let guard = 0;
+  while (nameEl.scrollWidth > maxWidth && size > minSize && guard < 40){
+    size -= 1;
+    nameEl.style.fontSize = size + 'px';
+    guard++;
+  }
+}
+
+function fireConfetti(){
+  if (typeof confetti !== 'function') return;
+  confetti({ particleCount: 140, spread: 90, origin: { y: 0.5 }, colors: ['#f0c866','#d4af37','#7a1f2b','#fff6da'] });
+  setTimeout(() => confetti({ particleCount: 80, spread: 120, origin: { y: 0.4 }, colors: ['#f0c866','#fff6da'] }), 250);
+}
+
+/* ============================================================
+   SOUND EFFECTS (synthesized with Web Audio — no external files,
+   so it works even if the venue has no internet for a CDN sample).
+============================================================ */
+let audioCtx = null;
+
+function initSound(){
+  soundOn = localStorage.getItem(LS_SOUND) !== 'off';
+  updateSoundButton();
+  // Browsers block audio until a real user gesture happens on the page.
+  // A single click/tap anywhere (e.g. the operator setting up the projector
+  // screen) unlocks it silently so later auto-triggered sounds can play.
+  const unlock = () => { ensureAudio(); };
+  document.addEventListener('click', unlock, { once: true });
+  document.addEventListener('touchstart', unlock, { once: true });
+}
+
+function ensureAudio(){
+  if (!soundOn) return;
+  try{
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }catch(e){ /* Web Audio not available — sounds simply won't play */ }
+}
+
+function toggleSound(){
+  soundOn = !soundOn;
+  localStorage.setItem(LS_SOUND, soundOn ? 'on' : 'off');
+  updateSoundButton();
+  if (soundOn) { ensureAudio(); toast('🔊 เปิดเสียงเอฟเฟกต์แล้ว'); }
+  else toast('🔇 ปิดเสียงเอฟเฟกต์แล้ว');
+}
+
+function updateSoundButton(){
+  const btn = document.getElementById('soundToggle');
+  if (!btn) return;
+  btn.innerHTML = soundOn
+    ? '🔊 <span class="hidden sm:inline">เสียง</span>'
+    : '🔇 <span class="hidden sm:inline">ปิดเสียง</span>';
+}
+
+function beep(freq, startOffset, dur, type, gainPeak){
+  if (!soundOn || !audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type || 'sine';
+  o.frequency.value = freq;
+  o.connect(g); g.connect(audioCtx.destination);
+  const t0 = audioCtx.currentTime + Math.max(startOffset, 0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(gainPeak || 0.25, t0 + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.start(t0);
+  o.stop(t0 + dur + 0.05);
+}
+
+/** A pitch-sweeping oscillator (glissando), used for whistles / cheer swoops. */
+function sweep(freqFrom, freqTo, startOffset, dur, type, gainPeak){
+  if (!soundOn || !audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type || 'sine';
+  o.connect(g); g.connect(audioCtx.destination);
+  const t0 = audioCtx.currentTime + Math.max(startOffset, 0);
+  o.frequency.setValueAtTime(freqFrom, t0);
+  o.frequency.exponentialRampToValueAtTime(Math.max(freqTo, 1), t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(gainPeak || 0.2, t0 + Math.min(0.04, dur * 0.3));
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.start(t0);
+  o.stop(t0 + dur + 0.05);
+}
+
+let noiseBuffer = null;
+function getNoiseBuffer(){
+  if (noiseBuffer) return noiseBuffer;
+  const len = audioCtx.sampleRate; // 1 second of noise, reused in short slices
+  noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+  return noiseBuffer;
+}
+
+/** A filtered burst of noise — used for mechanical "clicks" and firework booms/crackles. */
+function noiseBurst(startOffset, dur, filterType, freq, Q, gainPeak){
+  if (!soundOn || !audioCtx) return;
+  const src = audioCtx.createBufferSource();
+  src.buffer = getNoiseBuffer();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = filterType || 'bandpass';
+  filter.frequency.value = freq || 2000;
+  filter.Q.value = Q != null ? Q : 1;
+  const g = audioCtx.createGain();
+  src.connect(filter); filter.connect(g); g.connect(audioCtx.destination);
+  const t0 = audioCtx.currentTime + Math.max(startOffset, 0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(gainPeak || 0.25, t0 + 0.006);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.start(t0);
+  src.stop(t0 + dur + 0.05);
+}
+
+/** Suspenseful decelerating "wheel" spin: fast mechanical clicks that slow
+ *  down towards the end, plus a rising tension drone underneath — like a
+ *  roulette wheel winding down right before the reveal. */
+function playSpinSound(durationSec){
+  if (!soundOn) return;
+  ensureAudio();
+  if (!audioCtx) return;
+
+  let elapsed = 0;
+  const startInterval = 0.045; // fast clicking at first
+  const endInterval = 0.24;    // slows down a lot by the end — builds suspense
+  while (elapsed < durationSec){
+    const progress = elapsed / durationSec;
+    const freq = 2600 - progress * 1500; // clicks get lower/duller as it slows
+    noiseBurst(elapsed, 0.045, 'bandpass', Math.max(freq, 900), 2.2, 0.15 + progress * 0.08);
+    const interval = startInterval + (endInterval - startInterval) * Math.pow(progress, 2.2);
+    elapsed += interval;
+  }
+
+  // Rising tension drone under the last stretch of the spin
+  const droneStart = durationSec * 0.5;
+  const droneDur = durationSec - droneStart;
+  if (droneDur > 0.15){
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sawtooth';
+    o.connect(g); g.connect(audioCtx.destination);
+    const t0 = audioCtx.currentTime + droneStart;
+    o.frequency.setValueAtTime(85, t0);
+    o.frequency.linearRampToValueAtTime(165, t0 + droneDur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.13, t0 + droneDur * 0.85);
+    g.gain.linearRampToValueAtTime(0.0001, t0 + droneDur + 0.05);
+    o.start(t0);
+    o.stop(t0 + droneDur + 0.1);
+  }
+}
+
+/** Low soft rumble during the 4s "unit revealed, name still hidden" suspense hold. */
+function playDrumrollHold(durationSec){
+  if (!soundOn) return;
+  ensureAudio();
+  if (!audioCtx) return;
+  const perSecond = 13;
+  const ticks = Math.floor(durationSec * perSecond);
+  for (let i = 0; i < ticks; i++){
+    beep(150 + Math.random() * 35, i / perSecond, 0.09, 'sawtooth', 0.07);
+  }
+}
+
+/** Fireworks bursting + an excited "เย้!" cheer swoop — plays the instant
+ *  the winner's photo and name are revealed. */
+function playRevealFanfare(){
+  if (!soundOn) return;
+  ensureAudio();
+  if (!audioCtx) return;
+
+  // A few staggered firework launches, each: rising whistle -> boom -> crackle
+  const bursts = [0, 0.32, 0.6];
+  bursts.forEach((t, i) => {
+    sweep(500 + i * 70, 1700 + i * 120, t, 0.18, 'sine', 0.13);
+    noiseBurst(t + 0.17, 0.32, 'lowpass', 450, 0.8, 0.32);   // boom
+    noiseBurst(t + 0.19, 0.5, 'highpass', 3200, 0.7, 0.16);  // crackle/sparkle trail
+  });
+
+  // Joyful "เย้!" cheer swoops right after the bursts
+  const cheerStart = 0.85;
+  [0, 0.09, 0.17].forEach((d, i) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = i === 1 ? 'sawtooth' : 'triangle';
+    o.connect(g); g.connect(audioCtx.destination);
+    const t0 = audioCtx.currentTime + cheerStart + d;
+    const base = 360 + i * 50;
+    o.frequency.setValueAtTime(base, t0);
+    o.frequency.exponentialRampToValueAtTime(base * 2.2, t0 + 0.16);
+    o.frequency.exponentialRampToValueAtTime(base * 1.7, t0 + 0.4);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.17, t0 + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.48);
+    o.start(t0);
+    o.stop(t0 + 0.5);
+  });
+
+  // Final shimmer on top
+  setTimeout(() => {
+    beep(1760, 0, 0.25, 'sine', 0.15);
+    beep(2093, 0.06, 0.25, 'sine', 0.12);
+  }, (cheerStart + 0.5) * 1000);
+}
+
+/* ============================================================
+   WINNER HISTORY PANEL
+============================================================ */
+function renderWinnerHistory(){
+  const el = document.getElementById('winnerHistory');
+  if (!winnersHistoryCache.length){
+    el.innerHTML = '<p class="text-sm opacity-50">ยังไม่มีผู้ได้รับรางวัล</p>';
+    return;
+  }
+  el.innerHTML = winnersHistoryCache.slice().reverse().map(r => `
+    <div class="gold-border rounded-xl p-3" style="background:rgba(255,255,255,0.03)">
+      <div class="flex flex-wrap justify-between gap-1 mb-2">
+        <span class="font-display font-semibold text-gold">รอบที่ ${r.round} ${r.prizeName ? '— ' + escapeHtml(r.prizeName) : ''}</span>
+        <span class="text-xs opacity-60">${r.giver ? 'มอบโดย ' + escapeHtml(r.giver) + ' • ' : ''}${r.time || ''}</span>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        ${r.winners.map(w => `
+          <div class="px-3 py-1.5 rounded-lg" style="background:rgba(255,255,255,0.04)">
+            <div class="text-xs">
+              <div class="font-medium">${escapeHtml(w.name)}</div>
+              <div class="opacity-60">${escapeHtml(w.unit||'-')}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+/* ============================================================
+   MANAGE PARTICIPANTS MODAL
+============================================================ */
+function openManage(){
+  document.getElementById('manageModal').classList.remove('hidden');
+  document.getElementById('manageModal').classList.add('flex');
+  document.getElementById('searchBox').value = '';
+  resetAddPhotoField();
+  google.script.run.withSuccessHandler(list => {
+    participantsCache = list; saveParticipantsCache(); renderManageTable();
+  }).withFailureHandler(()=>{ renderManageTable(); }).getAllParticipants();
+}
+function closeManage(){
+  document.getElementById('manageModal').classList.add('hidden');
+  document.getElementById('manageModal').classList.remove('flex');
+}
+
+function renderManageTable(){
+  const searchEl = document.getElementById('searchBox');
+  const q = searchEl ? String(searchEl.value || '').trim().toLowerCase() : '';
+  const tbody = document.getElementById('manageTbody');
+  if (!tbody) return;
+  const rows = (participantsCache || []).filter(p => {
+    if (!q) return true;
+    const id = String(p.id || '').toLowerCase();
+    const name = String(p.name || '').toLowerCase();
+    const unit = String(p.unit || '').toLowerCase();
+    return id.includes(q) || name.includes(q) || unit.includes(q);
+  });
+  tbody.innerHTML = rows.map(p => `
+    <tr class="border-b border-white/5">
+      <td class="py-1 pr-2">${escapeHtml(p.id)}</td>
+      <td class="py-1 pr-2">${escapeHtml(p.name)}</td>
+      <td class="py-1 pr-2">${escapeHtml(p.unit)}</td>
+      <td class="py-1 pr-2">${p.status === 'ได้รับรางวัล' ? '🏆 ได้รับแล้ว' : '⏳ ยังไม่สุ่ม'}</td>
+      <td class="py-1 text-right"><button onclick="removeParticipantUi('${p.id}')" class="text-xs px-2 py-1 rounded-lg btn-maroon">ลบ</button></td>
+    </tr>
+  `).join('') || `<tr><td colspan="5" class="text-center py-4 opacity-50">${q ? 'ไม่พบข้อมูลที่ตรงกับ "' + escapeHtml(q) + '"' : 'ยังไม่มีรายชื่อ'}</td></tr>`;
+}
+
+function onAddPhotoSelected(evt){
+  const file = evt.target.files && evt.target.files[0];
+  if (!file) { resetAddPhotoField(); return; }
+  if (!file.type.startsWith('image/')) {
+    toast('⚠️ กรุณาเลือกไฟล์รูปภาพเท่านั้น');
+    resetAddPhotoField();
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result; // "data:image/jpeg;base64,...."
+    const comma = dataUrl.indexOf(',');
+    pendingPhoto = { base64: dataUrl.slice(comma + 1), mime: file.type };
+    const preview = document.getElementById('addPhotoPreview');
+    preview.src = dataUrl;
+    preview.classList.remove('hidden');
+    document.getElementById('addPhotoName').textContent = file.name;
+  };
+  reader.readAsDataURL(file);
+}
+
+function resetAddPhotoField(){
+  pendingPhoto = null;
+  const fileInput = document.getElementById('addPhoto');
+  const preview = document.getElementById('addPhotoPreview');
+  const nameEl = document.getElementById('addPhotoName');
+  if (fileInput) fileInput.value = '';
+  if (preview) { preview.src = ''; preview.classList.add('hidden'); }
+  if (nameEl) nameEl.textContent = '';
+}
+
+function addParticipantUi(){
+  const id = document.getElementById('addId').value.trim();
+  const name = document.getElementById('addName').value.trim();
+  const unit = document.getElementById('addUnit').value.trim();
+  const payload = { id, name, unit };
+  if (pendingPhoto) {
+    payload.photoBase64 = pendingPhoto.base64;
+    payload.photoMime = pendingPhoto.mime;
+  }
+  google.script.run.withSuccessHandler(res => {
+    if (!res.success){ toast('⚠️ ' + res.message); return; }
+    document.getElementById('addId').value = '';
+    document.getElementById('addName').value = '';
+    document.getElementById('addUnit').value = '';
+    resetAddPhotoField();
+    toast(res.warning ? '⚠️ ' + res.warning : '✅ เพิ่มรายชื่อเรียบร้อย');
+    openManage();
+    refreshFromServer();
+  }).withFailureHandler(err => toast('⚠️ ' + err.message)).addParticipant(payload);
+}
+
+function removeParticipantUi(id){
+  if (!confirm('ยืนยันลบรายชื่อ ID ' + id + ' ?')) return;
+  google.script.run.withSuccessHandler(res => {
+    if (!res.success){ toast('⚠️ ' + res.message); return; }
+    toast('🗑️ ลบรายชื่อเรียบร้อย');
+    openManage();
+    refreshFromServer();
+  }).withFailureHandler(err => toast('⚠️ ' + err.message)).removeParticipant(id);
+}
+
+/* ============================================================
+   RESET
+============================================================ */
+function confirmReset(){
+  document.getElementById('resetModal').classList.remove('hidden');
+  document.getElementById('resetModal').classList.add('flex');
+  document.getElementById('resetConfirmInput').value = '';
+}
+function closeReset(){
+  document.getElementById('resetModal').classList.add('hidden');
+  document.getElementById('resetModal').classList.remove('flex');
+}
+function doReset(){
+  if (document.getElementById('resetConfirmInput').value.trim() !== 'RESET'){
+    toast('⚠️ กรุณาพิมพ์ RESET ให้ถูกต้อง');
+    return;
+  }
+  google.script.run.withSuccessHandler(res => {
+    closeReset();
+    if (!res.success){ toast('⚠️ ' + res.message); return; }
+    lastEventId = res.event.id;
+    localStorage.setItem(LS_LAST_EVENT, lastEventId);
+    handleEvent(res.event);
+    refreshFromServer();
+  }).withFailureHandler(err => { closeReset(); toast('⚠️ ' + err.message); }).resetAll();
+}
+
+/* ============================================================
+   EXPORT CSV
+============================================================ */
+function exportCsv(){
+  google.script.run.withSuccessHandler(list => {
+    if (!list.length){ toast('⚠️ ยังไม่มีผู้ได้รับรางวัล'); return; }
+    const header = ['ลำดับ','รอบที่','ID 10 หลัก','ยศ-ชื่อ-สกุล','กอง','รางวัล','ผู้มอบรางวัล','เวลา'];
+    const lines = [header.join(',')];
+    list.forEach((w, i) => {
+      lines.push([i+1, w.round, w.id, csvSafe(w.name), csvSafe(w.unit), csvSafe(w.prize), csvSafe(w.giver), csvSafe(w.time)].join(','));
+    });
+    const csv = '\uFEFF' + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'ผู้ได้รับรางวัล_' + new Date().toISOString().slice(0,10) + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }).withFailureHandler(err => toast('⚠️ ' + err.message)).getWinnersList();
+}
+function csvSafe(v){ return '"' + String(v||'').replace(/"/g,'""') + '"'; }
+
+/* ============================================================
+   UTIL
+============================================================ */
+function escapeHtml(str){
+  return String(str||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+let toastTimer = null;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.add('hidden'), 3200);
+}
+</script>
+</body>
+</html>
